@@ -1,0 +1,88 @@
+-- Create Tables
+CREATE TABLE Members (
+    MemberID INT PRIMARY KEY,
+    Name VARCHAR(100),
+    JoinDate DATE
+);
+
+CREATE TABLE Books (
+    BookID INT PRIMARY KEY,
+    Title VARCHAR(100),
+    Author VARCHAR(100),
+    CopiesAvailable INT
+);
+
+CREATE TABLE IssueRecords (
+    IssueID INT PRIMARY KEY,
+    MemberID INT,
+    BookID INT,
+    IssueDate DATE,
+    ReturnDate DATE,
+    FOREIGN KEY (MemberID) REFERENCES Members(MemberID),
+    FOREIGN KEY (BookID) REFERENCES Books(BookID)
+);
+
+-- Insert Sample Data
+INSERT INTO Members (MemberID, Name, JoinDate) VALUES
+(1, 'Alice', '2023-01-10'),
+(2, 'Bob', '2023-02-15'),
+(3, 'Charlie', '2023-03-20');
+
+INSERT INTO Books (BookID, Title, Author, CopiesAvailable) VALUES
+(1, 'The Alchemist', 'Paulo Coelho', 3),
+(2, '1984', 'George Orwell', 2),
+(3, 'The Great Gatsby', 'F. Scott Fitzgerald', 1);
+
+-- Create Stored Procedure (without DELIMITER)
+CREATE PROCEDURE IssueBook (
+    IN p_MemberID INT,
+    IN p_BookID INT
+)
+BEGIN
+    DECLARE available INT;
+
+    SELECT CopiesAvailable INTO available
+    FROM Books
+    WHERE BookID = p_BookID;
+
+    IF available > 0 THEN
+        -- Generate new IssueID manually (get max + 1)
+        DECLARE new_id INT;
+        SELECT IFNULL(MAX(IssueID), 0) + 1 INTO new_id FROM IssueRecords;
+
+        INSERT INTO IssueRecords (IssueID, MemberID, BookID, IssueDate, ReturnDate)
+        VALUES (new_id, p_MemberID, p_BookID, CURDATE(), NULL);
+
+        UPDATE Books
+        SET CopiesAvailable = CopiesAvailable - 1
+        WHERE BookID = p_BookID;
+    ELSE
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'No copies available.';
+    END IF;
+END;
+
+-- Create Function
+CREATE FUNCTION TotalBooksIssued(p_MemberID INT)
+RETURNS INT
+DETERMINISTIC
+BEGIN
+    DECLARE total INT;
+
+    SELECT COUNT(*) INTO total
+    FROM IssueRecords
+    WHERE MemberID = p_MemberID;
+
+    RETURN total;
+END;
+
+-- Example Usage
+
+-- Issue a book to Member ID 1 (Alice) - Book ID 2 ('1984')
+CALL IssueBook(1, 2);
+
+-- Issue another book to Member ID 1 (Alice) - Book ID 1 ('The Alchemist')
+CALL IssueBook(1, 1);
+
+-- Check how many books Member ID 1 has issued
+SELECT TotalBooksIssued(1) AS BooksIssuedByAlice;
